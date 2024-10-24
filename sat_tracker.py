@@ -33,20 +33,33 @@ def get_satellite_passes(norad_id):
 
 def plot_horizon(pass_data, sat_name):
     """Plot the pass path on a polar plot representing the horizon."""
-    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(5, 5))
+    plt.clf()  # Clear the current figure
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(4, 4))
     ax.set_theta_direction(-1)
     ax.set_theta_offset(3.14159 / 2)
     ax.set_title(f"{sat_name} Pass Path", fontsize=14)
-    
+
     for p in pass_data:
         start_az = p['startAz'] * (3.14159 / 180)
         max_az = p['maxAz'] * (3.14159 / 180)
         end_az = p['endAz'] * (3.14159 / 180)
         
-        ax.plot([start_az, max_az, end_az], [1, p['maxEl'] / 90, 1], marker='o')
-        ax.annotate(f"Start: {p['startAzCompass']}", (start_az, 1), fontsize=8)
-        ax.annotate(f"End: {p['endAzCompass']}", (end_az, 1), fontsize=8)
-    
+        # Debugging output to inspect available keys in p
+        print(f"Satellite pass data: {p}")
+
+        # Use .get() to avoid KeyError and provide a default value
+        start_el = 90 - p.get('startEl', 0)
+        max_el = 90 - p.get('maxEl', 0)
+        end_el = 90 - p.get('endEl', 0)  # Ensure this key exists or provide default
+
+        ax.plot([start_az, max_az, end_az], [start_el, max_el, end_el], marker='o')
+        ax.annotate(f"Start: {p.get('startAzCompass', 'N/A')}", (start_az, start_el), fontsize=8)
+        ax.annotate(f"End: {p.get('endAzCompass', 'N/A')}", (end_az, end_el), fontsize=8)
+
+    ax.set_ylim(0, 90)  # Set limits to represent elevation in degrees
+    ax.set_yticks(range(0, 91, 10))  # Set y-ticks for elevation in degrees
+    ax.set_yticklabels(range(0, 91, 10))  # Set y-tick labels to degrees
+
     return fig
 
 def refresh_data():
@@ -91,7 +104,7 @@ def sort_column(col):
 # GUI setup
 window = tk.Tk()
 window.title("NOAA Satellite Pass Tracker")
-window.geometry("1000x600")
+window.geometry("1200x600")
 
 # Data storage for passes
 all_pass_data = {}
@@ -101,7 +114,7 @@ columns = ("Satellite", "Frequency", "Start Time", "Start Azimuth", "Max Elevati
 table = ttk.Treeview(window, columns=columns, show="headings", height=20)
 for col in columns:
     table.heading(col, text=col, command=lambda c=col: sort_column(c))
-    table.column(col, anchor=tk.CENTER, width=150)
+    table.column(col, anchor=tk.CENTER, width=120)
 
 # Add a scrollbar to the table
 scrollbar = ttk.Scrollbar(window, orient="vertical", command=table.yview)

@@ -1,0 +1,61 @@
+
+### Setting Up and Running SatDump with USB Access in WSL
+
+1. **Open Ubuntu (WSL) as Administrator:**
+   - Right-click on the Ubuntu icon in your Start menu and select "Run as administrator."
+
+2. **Install Necessary Packages:**
+   - Update package lists:
+     ```bash
+     sudo apt update
+     ```
+   - Install required packages if not already installed:
+     ```bash
+     sudo apt install usbip
+     ```
+
+3. **Open PowerShell as Administrator:**
+   - Search for "PowerShell" in the Start menu, right-click, and select "Run as administrator."
+
+4. **Start USBIP Daemon:**
+   - In PowerShell, run the following command to start the USBIP daemon:
+     ```powershell
+     usbipd wsl start
+     ```
+
+5. **List Available USB Devices:**
+   - Check for your USB device using the command:
+     ```powershell
+     usbipd list
+     ```
+
+6. **Attach USB Device to WSL:**
+   - Use the following command to attach the USB device (replace `4-1` with your actual bus ID if different):
+     ```powershell
+     usbipd attach --busid 4-1 --wsl
+     ```
+
+7. **Open Ubuntu (WSL) Again:**
+   - If you closed it, open Ubuntu again (no need to run as admin this time).
+
+8. **Verify USB Device Connection:**
+   - In Ubuntu, check if the USB device is connected:
+     ```bash
+     lsusb
+     ```
+
+9. **Navigate to SatDump Build Directory:**
+   - Change to the directory where SatDump is built:
+     ```bash
+     cd ~/SatDump/build
+     ```
+
+10. **Run SatDump UI:**
+    - Start the SatDump user interface:
+      ```bash
+      ./satdump-ui
+      ```
+
+### Notes:
+- If the `xclock` command fails, ensure your X server is running (like VcXsrv) and set the DISPLAY variable correctly.
+- If you want to automate the USB attachment, consider creating a batch script to run on startup as mentioned earlier.
