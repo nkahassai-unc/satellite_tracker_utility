@@ -81,19 +81,27 @@ def refresh_data():
                 best_pass = "X" if (8 <= start_hour < 20 and max_el > 40) else ""
 
                 # Format times for display
-                start_time = start_time_et.strftime('%Y-%m-%d %I:%M:%S %p')  # Format to 12-hour with AM/PM
-                max_time = datetime.datetime.utcfromtimestamp(p['maxUTC']).replace(tzinfo=pytz.utc).astimezone(eastern_tz).strftime('%Y-%m-%d %I:%M:%S %p')
-                end_time = datetime.datetime.utcfromtimestamp(p['endUTC']).replace(tzinfo=pytz.utc).astimezone(eastern_tz).strftime('%Y-%m-%d %I:%M:%S %p')
+                start_time_display = start_time_et.strftime('%Y-%m-%d %I:%M:%S %p')  # Format to 12-hour with AM/PM
+                max_time_display = datetime.datetime.utcfromtimestamp(p['maxUTC']).replace(tzinfo=pytz.utc).astimezone(eastern_tz).strftime('%Y-%m-%d %I:%M:%S %p')
+                end_time_display = datetime.datetime.utcfromtimestamp(p['endUTC']).replace(tzinfo=pytz.utc).astimezone(eastern_tz).strftime('%Y-%m-%d %I:%M:%S %p')
 
                 # Insert pass data into the table with BEST indicator
                 table.insert("", tk.END, values=(
-                    sat_name, SAT_FREQUENCIES[sat_name], start_time,
+                    sat_name, SAT_FREQUENCIES[sat_name], start_time_display,
                     f"{p['startAz']}° ({p['startAzCompass']})",
-                    f"{p['maxEl']}° at {max_time}", end_time,
-                    f"{p['endAz']}° ({p['endAzCompass']})", best_pass  # Add BEST indicator
-                ), tags=('green_text',))
-                
-                all_pass_data[(sat_name, start_time)] = (sat_name, [p])
+                    start_time_et,  # Store the original datetime object for sorting
+                    max_time_display, end_time_display, best_pass
+                ))
+
+    # Function to sort the table by the datetime object
+    def sort_by_datetime(col_index):
+        data = [(table.set(child, col_index), child) for child in table.get_children('')]
+        data.sort(key=lambda x: datetime.datetime.strptime(x[0], '%Y-%m-%d %H:%M:%S%z'))
+        for index, (val, child) in enumerate(data):
+            table.move(child, '', index)
+
+    # Sort by the start time column (index 4)
+    sort_by_datetime(4)
 
 def on_select(event):
     """Update the diagram based on selected pass."""
