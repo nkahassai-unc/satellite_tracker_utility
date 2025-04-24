@@ -1,5 +1,9 @@
+# NOAA Polar Operational Environmental Satellites (POES) Pass Tracker
+# Powered by N2YO API
+
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
+from tkinter import ttk
 import requests
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -15,7 +19,7 @@ LAT, LNG, ALT = 39.9216, -75.1812, 12
 sort_states = {}
 eastern_tz = pytz.timezone('America/New_York')
 all_pass_data = {}
-canvas = None
+canvas = None  # Canvas holder for polar plot
 
 def get_satellite_passes(norad_id):
     url = f"{BASE_URL}/{norad_id}/{LAT}/{LNG}/{ALT}/2/10/&apiKey={API_KEY}"
@@ -31,21 +35,24 @@ def get_satellite_passes(norad_id):
     return None
 
 def plot_horizon(pass_data, sat_name):
+    plt.clf()
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(4, 4))
     ax.set_theta_direction(-1)
     ax.set_theta_offset(3.14159 / 2)
-    ax.set_title(f"NOAA {sat_name} Pass Path", fontsize=12)
+    ax.set_title(f"NOAA {sat_name} Pass Path", fontsize=14)
     for p in pass_data:
-        az = [p.get('startAz', 0), p.get('maxAz', 0), p.get('endAz', 0)]
-        el = [p.get('startEl', 0), p.get('maxEl', 0), p.get('endEl', 0)]
-        az_rad = [a * (3.14159 / 180) for a in az]
-        el_inv = [90 - e for e in el]
-        ax.plot(az_rad, el_inv, marker='o')
-        ax.annotate(f"Start: {p.get('startAzCompass', '')}", (az_rad[0], el_inv[0]), fontsize=8)
-        ax.annotate(f"End: {p.get('endAzCompass', '')}", (az_rad[2], el_inv[2]), fontsize=8)
+        start_az = p['startAz'] * (3.14159 / 180)
+        max_az = p['maxAz'] * (3.14159 / 180)
+        end_az = p['endAz'] * (3.14159 / 180)
+        start_el = 90 - p.get('startEl', 0)
+        max_el = 90 - p.get('maxEl', 0)
+        end_el = 90 - p.get('endEl', 0)
+        ax.plot([start_az, max_az, end_az], [start_el, max_el, end_el], marker='o')
+        ax.annotate(f"Start: {p.get('startAzCompass', 'N/A')}", (start_az, start_el), fontsize=8)
+        ax.annotate(f"End: {p.get('endAzCompass', 'N/A')}", (end_az, end_el), fontsize=8)
     ax.set_ylim(0, 90)
     ax.set_yticks(range(0, 91, 10))
-    ax.set_yticklabels(reversed(range(0, 91, 10)))
+    ax.set_yticklabels(range(0, 91, 10))
     return fig
 
 def refresh_data():
@@ -56,8 +63,8 @@ def refresh_data():
         data = get_satellite_passes(norad_id)
         if data and 'passes' in data:
             for p in data['passes']:
-                start_time_utc = datetime.datetime.fromtimestamp(p['startUTC'], tz=datetime.timezone.utc)
-                start_time_et = start_time_utc.astimezone(eastern_tz)
+                start_time_utc = datetime.datetime.utcfromtimestamp(p['startUTC'])
+                start_time_et = start_time_utc.replace(tzinfo=pytz.utc).astimezone(eastern_tz)
                 start_hour = start_time_et.hour
                 max_el = p.get('maxEl', 0)
 
@@ -74,21 +81,19 @@ def refresh_data():
                 if not (8 <= start_hour < 20 and max_el > 40):
                     best_pass = ""
 
+                # Format times
                 start_time = start_time_et.strftime('%b %d %I:%M %p')
-                max_time = datetime.datetime.fromtimestamp(p['maxUTC'], tz=datetime.timezone.utc).astimezone(eastern_tz).strftime('%I:%M %p')
-                end_time = datetime.datetime.fromtimestamp(p['endUTC'], tz=datetime.timezone.utc).astimezone(eastern_tz).strftime('%b %d %I:%M %p')
+                max_time = datetime.datetime.utcfromtimestamp(p['maxUTC']).replace(tzinfo=pytz.utc).astimezone(eastern_tz).strftime('%I:%M %p')
+                end_time = datetime.datetime.utcfromtimestamp(p['endUTC']).replace(tzinfo=pytz.utc).astimezone(eastern_tz).strftime('%b %d %I:%M %p')
 
                 table.insert("", tk.END, values=(
                     short_id, start_time,
-                    f"{p.get('startAz', 0)}° ({p.get('startAzCompass', '')})",
-                    f"{p.get('maxEl', 0)}° at {max_time}", end_time,
-                    f"{p.get('endAz', 0)}° ({p.get('endAzCompass', '')})", best_pass
+                    f"{p['startAz']}° ({p['startAzCompass']})",
+                    f"{p['maxEl']}° at {max_time}", end_time,
+                    f"{p['endAz']}° ({p['endAzCompass']})", best_pass
                 ), tags=(tag,))
 
-                key = (short_id, start_time)
-                if key not in all_pass_data:
-                    all_pass_data[key] = (short_id, [])
-                all_pass_data[key][1].append(p)
+                all_pass_data[(short_id, start_time)] = (short_id, [p])
 
 def on_select(event):
     global canvas
@@ -101,60 +106,48 @@ def on_select(event):
             fig = plot_horizon(pass_data, short_id)
             if canvas:
                 canvas.get_tk_widget().destroy()
-            canvas = FigureCanvasTkAgg(fig, master=plot_frame)
-            canvas.draw()
-            canvas.get_tk_widget().pack(padx=10, pady=10)
+            canvas = FigureCanvasTkAgg(fig, master=window)
+            canvas.get_tk_widget().grid(row=3, column=1, padx=10, pady=10)
 
 def sort_column(col):
-    def extract_sort_key(value):
-        try:
-            if 'at' in value:
-                time_str = value.split('at')[-1].strip()
-                return datetime.datetime.strptime(time_str, '%I:%M %p')
-            elif any(m in value for m in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']):
-                return datetime.datetime.strptime(value, '%b %d %I:%M %p')
-            else:
-                return float(value.split('°')[0])
-        except:
-            return value.lower() if isinstance(value, str) else value
-
-    data = [(extract_sort_key(table.set(child, col)), child) for child in table.get_children('')]
+    data = [(table.set(child, col), child) for child in table.get_children('')]
     data.sort(reverse=sort_states.get(col, False))
     for index, (_, item) in enumerate(data):
         table.move(item, '', index)
     sort_states[col] = not sort_states.get(col, False)
 
-# === GUI Setup ===
+# Add this function
+def toggle_theme():
+    current_theme = style.theme_use()
+    if current_theme == "default":
+        style.theme_use("clam")  # Example dark theme
+        window.configure(bg="black")
+        table.configure(style="Dark.Treeview")
+    else:
+        style.theme_use("default")
+        window.configure(bg="white")
+        table.configure(style="Treeview")
+
+# GUI setup
 window = tk.Tk()
 window.title("NOAA Satellite Pass Tracker")
-window.geometry("1000x720")
+window.geometry("1200x800")
 
-# Title
-tk.Label(window, text="NOAA Satellite Pass Tracker", font=("Arial", 16, "bold")).pack(pady=(10, 0))
+# Add this before the table definition
+title_label = tk.Label(window, text="NOAA Satellite Pass Tracker", font=("Arial", 16, "bold"))
+title_label.grid(row=0, column=1, pady=(10, 5))
 
-# Frequencies
-legend_frame = tk.Frame(window)
-legend_frame.pack(pady=5)
-tk.Label(legend_frame, text="Frequencies:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
-for sat_id, freq in SAT_FREQUENCIES.items():
-    tk.Label(legend_frame, text=f"NOAA {sat_id}: {freq}", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
-
-# Table
 columns = ("NOAA", "Start Time", "Start Azimuth", "Max Elevation", "End Time", "End Azimuth", "Pass Quality")
-table_frame = tk.Frame(window)
-table_frame.pack()
+table = ttk.Treeview(window, columns=columns, show="headings", height=20)
 
-table = ttk.Treeview(table_frame, columns=columns, show="headings", height=18)
-col_widths = [50, 120, 140, 120, 120, 140, 80]
-for col, width in zip(columns, col_widths):
+# Modify the column definition loop
+for col in columns:
     table.heading(col, text=col, command=lambda c=col: sort_column(c))
-    table.column(col, anchor=tk.CENTER, width=width)
+    table.column(col, anchor=tk.CENTER)  # Let the column size adjust automatically
 
-scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=table.yview)
+scrollbar = ttk.Scrollbar(window, orient="vertical", command=table.yview)
 table.configure(yscroll=scrollbar.set)
-scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-table.pack(side=tk.LEFT, fill=tk.BOTH)
+scrollbar.grid(row=0, column=2, sticky="ns")
 
 style = ttk.Style()
 style.configure("Treeview", font=("Arial", 10))
@@ -163,13 +156,24 @@ table.tag_configure('high', foreground='green')
 table.tag_configure('mid', foreground='orange')
 table.tag_configure('low', foreground='red')
 
+table.grid(row=0, column=1, padx=10, pady=10)
 table.bind("<<TreeviewSelect>>", on_select)
 
-# Refresh button
-tk.Button(window, text="Refresh Data", command=refresh_data, font=("Arial", 12)).pack(pady=10)
+refresh_button = tk.Button(window, text="Refresh Data", command=refresh_data, font=("Arial", 12))
+refresh_button.grid(row=1, column=1, pady=(10, 5))
 
-# Polar Plot Frame
-plot_frame = tk.LabelFrame(window, text="Pass Path Plot", padx=5, pady=5)
-plot_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+# Add a button for toggling theme
+theme_button = tk.Button(window, text="Toggle Theme", command=toggle_theme, font=("Arial", 12))
+theme_button.grid(row=1, column=1, pady=(5, 10), sticky="e")
+
+# Replace the legend definition with this
+legend_frame = tk.Frame(window)
+legend_frame.grid(row=2, column=1, pady=(0, 10))
+
+legend_label = tk.Label(legend_frame, text="Frequencies:", font=("Arial", 10, "bold"))
+legend_label.pack(side=tk.LEFT, padx=5)
+
+for sat_id, freq in SAT_FREQUENCIES.items():
+    tk.Label(legend_frame, text=f"NOAA {sat_id}: {freq}", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
 
 window.mainloop()
